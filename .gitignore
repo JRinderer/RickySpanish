@@ -1,0 +1,8 @@
+# Compiled binary
+rickspanish
+
+# IDE
+.idea/
+
+# macOS
+.DS_Store

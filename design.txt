@@ -1,0 +1,29 @@
+Summary: I'd like to build a simple CLI project management software that allows
+me to track projects I am working. I'd like it written in Go. I'd like to avoid
+using third party libaries and would prefer to use only built in go libraries.
+
+I think we should have a structure like Project. A project should be composed of
+
+1. A unique ID.
+2. A name, if no name is given at input it should be automatically generated from
+us Military Operations during WWII and Korea.
+3. A priority.
+4. Whether the project is related to company goals.
+5. Status of the project.
+6. Comments and notes.
+7. A project directory that stores supporting docs and such.
+
+We should build this in a way that it can become flexible, but for now it
+can be a local single user applicaiton.
+
+I would like to make it an MCP server application if possible so I can interact
+with the software using Claude.
+
+I'd like to use a database to track this as well, preferably something that
+can run on Windows, Linux or Mac. All data must be encrypted at rest as well.
+
+The token, key, password, or whatever is used to encrypt cannot be included in
+source code or as a plaintext file.
+
+Provide documentation or a read me that informs the user based on what type of
+system they have what they need to do to encrypt the database.
