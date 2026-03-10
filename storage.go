@@ -193,6 +193,95 @@ func (s *Storage) AddNote(projectID, noteID, content string) error {
 	return fmt.Errorf("project %q not found", projectID)
 }
 
+func (s *Storage) AddTask(projectID string, task Task) error {
+	db, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range db.Projects {
+		p := &db.Projects[i]
+		if p.ID == projectID || p.Name == projectID {
+			if p.Tasks == nil {
+				p.Tasks = []Task{}
+			}
+			p.Tasks = append(p.Tasks, task)
+			p.UpdatedAt = now()
+			return s.save(db)
+		}
+	}
+	return fmt.Errorf("project %q not found", projectID)
+}
+
+func (s *Storage) UpdateTask(projectID string, updated Task) error {
+	db, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range db.Projects {
+		p := &db.Projects[i]
+		if p.ID == projectID || p.Name == projectID {
+			for j := range p.Tasks {
+				t := &p.Tasks[j]
+				if t.ID == updated.ID || (len(t.ID) >= 8 && t.ID[:8] == updated.ID) {
+					if t.Status != updated.Status {
+						updated.StatusChangedAt = now()
+					} else {
+						updated.StatusChangedAt = t.StatusChangedAt
+					}
+					*t = updated
+					p.UpdatedAt = now()
+					return s.save(db)
+				}
+			}
+			return fmt.Errorf("task %q not found", updated.ID)
+		}
+	}
+	return fmt.Errorf("project %q not found", projectID)
+}
+
+func (s *Storage) DeleteTask(projectID, taskID string) error {
+	db, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range db.Projects {
+		p := &db.Projects[i]
+		if p.ID == projectID || p.Name == projectID {
+			for j, t := range p.Tasks {
+				if t.ID == taskID || (len(t.ID) >= 8 && t.ID[:8] == taskID) {
+					p.Tasks = append(p.Tasks[:j], p.Tasks[j+1:]...)
+					p.UpdatedAt = now()
+					return s.save(db)
+				}
+			}
+			return fmt.Errorf("task %q not found", taskID)
+		}
+	}
+	return fmt.Errorf("project %q not found", projectID)
+}
+
+func (s *Storage) AddTaskComment(projectID, taskID, comment string) error {
+	db, err := s.load()
+	if err != nil {
+		return err
+	}
+	for i := range db.Projects {
+		p := &db.Projects[i]
+		if p.ID == projectID || p.Name == projectID {
+			for j := range p.Tasks {
+				t := &p.Tasks[j]
+				if t.ID == taskID || (len(t.ID) >= 8 && t.ID[:8] == taskID) {
+					t.Comments = append(t.Comments, comment)
+					p.UpdatedAt = now()
+					return s.save(db)
+				}
+			}
+			return fmt.Errorf("task %q not found", taskID)
+		}
+	}
+	return fmt.Errorf("project %q not found", projectID)
+}
+
 func (s *Storage) DeleteNote(projectID, noteID string) error {
 	db, err := s.load()
 	if err != nil {

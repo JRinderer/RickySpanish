@@ -195,7 +195,22 @@ func showProjectDetail(storage *Storage, projectID string) {
 		}
 
 		fmt.Println(tuiDiv())
-		fmt.Println(tuiRow("  [N] Add Note   [R] Remove Note"))
+		if len(edited.Tasks) == 0 {
+			fmt.Println(tuiRow("  Tasks: (none)"))
+		} else {
+			fmt.Println(tuiRow(fmt.Sprintf("  Tasks (%d):", len(edited.Tasks))))
+			for _, t := range edited.Tasks {
+				changed := ""
+				if !t.StatusChangedAt.IsZero() {
+					changed = t.StatusChangedAt.Format("2006-01-02")
+				}
+				line := fmt.Sprintf("  %-12s  %-10s  %s", truncate(t.Description, 12), t.Status, changed)
+				fmt.Println(tuiRow(line))
+			}
+		}
+
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow("  [N] Add Note   [R] Remove Note   [T] Manage Tasks"))
 		fmt.Println(tuiDiv())
 		fmt.Println(tuiRow("  [S] Save   [C] Cancel   [D] Delete Project"))
 		fmt.Println(tuiBot())
@@ -211,6 +226,8 @@ func showProjectDetail(storage *Storage, projectID string) {
 		case "4":
 			fmt.Print("  New directory: ")
 			edited.Directory = tuiRead()
+		case "T":
+			showTaskList(&edited)
 		case "N":
 			fmt.Print("  Note text: ")
 			content := tuiRead()
@@ -369,6 +386,146 @@ func tuiError(msg string) {
 	fmt.Println(tuiRow("  Press Enter to continue."))
 	fmt.Println(tuiBot())
 	tuiRead()
+}
+
+// ─── Task screens ─────────────────────────────────────────────────────────────
+
+func showTaskList(p *Project) {
+	for {
+		clearScreen()
+		fmt.Println(tuiTop())
+		fmt.Println(tuiRow(fmt.Sprintf("  Tasks: %s (%d)", truncate(p.Name, 40), len(p.Tasks))))
+		fmt.Println(tuiRow("  Note: changes are saved when you save the project."))
+		fmt.Println(tuiDiv())
+
+		if len(p.Tasks) == 0 {
+			fmt.Println(tuiRow("  No tasks yet."))
+		} else {
+			fmt.Println(tuiRow(fmt.Sprintf("  %-4s %-32s %-12s %s", "#", "DESCRIPTION", "STATUS", "CHANGED")))
+			fmt.Println(tuiDiv())
+			for i, t := range p.Tasks {
+				changed := ""
+				if !t.StatusChangedAt.IsZero() {
+					changed = t.StatusChangedAt.Format("2006-01-02")
+				}
+				line := fmt.Sprintf("  %-4s %-32s %-12s %s",
+					fmt.Sprintf("[%d]", i+1), truncate(t.Description, 32), t.Status, changed)
+				fmt.Println(tuiRow(line))
+			}
+		}
+
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow("  [A] Add Task   [0] Back"))
+		fmt.Println(tuiBot())
+		fmt.Print("  Choice: ")
+
+		choice := tuiRead()
+		switch strings.ToUpper(choice) {
+		case "0", "":
+			return
+		case "A":
+			fmt.Print("  Task description: ")
+			desc := tuiRead()
+			if desc == "" {
+				break
+			}
+			t := time.Now().UTC()
+			p.Tasks = append(p.Tasks, Task{
+				ID:              newID(),
+				Description:     desc,
+				Comments:        []string{},
+				Status:          StatusActive,
+				StatusChangedAt: t,
+				CreatedAt:       t,
+			})
+		default:
+			var idx int
+			fmt.Sscanf(choice, "%d", &idx)
+			if idx >= 1 && idx <= len(p.Tasks) {
+				showTaskDetail(p, idx-1)
+			}
+		}
+	}
+}
+
+func showTaskDetail(p *Project, taskIdx int) {
+	for {
+		t := &p.Tasks[taskIdx]
+		clearScreen()
+		fmt.Println(tuiTop())
+		fmt.Println(tuiRow(fmt.Sprintf("  TASK: %s", truncate(t.Description, 60))))
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow(fmt.Sprintf("  ID:      %s", t.ID[:8])))
+		fmt.Println(tuiRow(fmt.Sprintf("  Created: %s", t.CreatedAt.Format("2006-01-02 15:04:05"))))
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow(fmt.Sprintf("  [1]  Description: %s", truncate(t.Description, 50))))
+		fmt.Println(tuiRow(fmt.Sprintf("  [2]  Status:      %s", t.Status)))
+		if !t.StatusChangedAt.IsZero() {
+			fmt.Println(tuiRow(fmt.Sprintf("       Changed:     %s", t.StatusChangedAt.Format("2006-01-02 15:04:05"))))
+		}
+		fmt.Println(tuiDiv())
+
+		if len(t.Comments) == 0 {
+			fmt.Println(tuiRow("  Comments: (none)"))
+		} else {
+			fmt.Println(tuiRow(fmt.Sprintf("  Comments (%d):", len(t.Comments))))
+			for i, c := range t.Comments {
+				fmt.Println(tuiRow(fmt.Sprintf("  [%d]  %s", i+1, truncate(c, 58))))
+			}
+		}
+
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow("  [C] Add Comment   [R] Remove Comment"))
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow("  [D] Delete Task   [0] Back"))
+		fmt.Println(tuiBot())
+		fmt.Print("  Choice: ")
+
+		switch strings.ToUpper(tuiRead()) {
+		case "1":
+			fmt.Print("  New description: ")
+			desc := tuiRead()
+			if desc != "" {
+				t.Description = desc
+			}
+		case "2":
+			newStatus := tuiPickStatus(t.Status)
+			if newStatus != t.Status {
+				t.Status = newStatus
+				t.StatusChangedAt = time.Now().UTC()
+			}
+		case "C":
+			fmt.Print("  Comment text: ")
+			comment := tuiRead()
+			if comment != "" {
+				t.Comments = append(t.Comments, comment)
+			}
+		case "R":
+			if len(t.Comments) == 0 {
+				break
+			}
+			fmt.Print("  Remove comment #: ")
+			var idx int
+			fmt.Sscanf(tuiRead(), "%d", &idx)
+			if idx >= 1 && idx <= len(t.Comments) {
+				t.Comments = append(t.Comments[:idx-1], t.Comments[idx:]...)
+			}
+		case "D":
+			clearScreen()
+			fmt.Println(tuiTop())
+			fmt.Println(tuiRow("  Delete this task?"))
+			fmt.Println(tuiDiv())
+			fmt.Println(tuiRow("  [Y] Yes   [N] No"))
+			fmt.Println(tuiBot())
+			fmt.Print("  Choice: ")
+			if strings.ToUpper(tuiRead()) == "Y" {
+				p.Tasks = append(p.Tasks[:taskIdx], p.Tasks[taskIdx+1:]...)
+			}
+			return
+		case "0":
+			return
+		}
+	}
 }
 
 func tuiStatusLabel(s string) string {

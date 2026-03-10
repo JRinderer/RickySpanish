@@ -167,6 +167,16 @@ func (s *mcpServer) handleToolCall(req rpcRequest) {
 		result, callErr = s.toolAddNote(params.Arguments)
 	case "delete_note":
 		result, callErr = s.toolDeleteNote(params.Arguments)
+	case "add_task":
+		result, callErr = s.toolAddTask(params.Arguments)
+	case "list_tasks":
+		result, callErr = s.toolListTasks(params.Arguments)
+	case "update_task":
+		result, callErr = s.toolUpdateTask(params.Arguments)
+	case "delete_task":
+		result, callErr = s.toolDeleteTask(params.Arguments)
+	case "add_task_comment":
+		result, callErr = s.toolAddTaskComment(params.Arguments)
 	default:
 		s.sendError(req.ID, -32601, "Unknown tool: "+params.Name)
 		return
@@ -313,6 +323,126 @@ func (s *mcpServer) toolDeleteNote(raw json.RawMessage) (string, error) {
 	return fmt.Sprintf("Note %s deleted from project %s.", args.NoteID, args.ProjectID), nil
 }
 
+func (s *mcpServer) toolAddTask(raw json.RawMessage) (string, error) {
+	var args struct {
+		ProjectID   string `json:"project_id"`
+		Description string `json:"description"`
+		Status      string `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if args.Description == "" {
+		return "", fmt.Errorf("description is required")
+	}
+	st := Status(args.Status)
+	if args.Status == "" {
+		st = StatusActive
+	} else if !st.Valid() {
+		return "", fmt.Errorf("invalid status %q", args.Status)
+	}
+	t := now()
+	task := Task{
+		ID:              newID(),
+		Description:     args.Description,
+		Comments:        []string{},
+		Status:          st,
+		StatusChangedAt: t,
+		CreatedAt:       t,
+	}
+	if err := s.storage.AddTask(args.ProjectID, task); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Task %s added to project %s.", task.ID[:8], args.ProjectID), nil
+}
+
+func (s *mcpServer) toolListTasks(raw json.RawMessage) (string, error) {
+	var args struct {
+		ProjectID string `json:"project_id"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	p, err := s.storage.GetProject(args.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	if len(p.Tasks) == 0 {
+		return "No tasks for this project.", nil
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Tasks for %q (%d):\n\n", p.Name, len(p.Tasks))
+	for _, t := range p.Tasks {
+		fmt.Fprintf(&sb, "[%s] %-12s %s\n", t.ID[:8], t.Status, t.Description)
+		fmt.Fprintf(&sb, "  Changed: %s\n", t.StatusChangedAt.Format("2006-01-02 15:04:05"))
+		for _, c := range t.Comments {
+			fmt.Fprintf(&sb, "  Comment: %s\n", c)
+		}
+		fmt.Fprintln(&sb)
+	}
+	return sb.String(), nil
+}
+
+func (s *mcpServer) toolUpdateTask(raw json.RawMessage) (string, error) {
+	var args struct {
+		ProjectID   string  `json:"project_id"`
+		TaskID      string  `json:"task_id"`
+		Description *string `json:"description"`
+		Status      *string `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	p, err := s.storage.GetProject(args.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	for _, t := range p.Tasks {
+		if t.ID == args.TaskID || (len(t.ID) >= 8 && t.ID[:8] == args.TaskID) {
+			if args.Description != nil {
+				t.Description = *args.Description
+			}
+			if args.Status != nil {
+				t.Status = Status(*args.Status)
+			}
+			if err := s.storage.UpdateTask(p.ID, t); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("Task %s updated.", t.ID[:8]), nil
+		}
+	}
+	return "", fmt.Errorf("task %q not found", args.TaskID)
+}
+
+func (s *mcpServer) toolDeleteTask(raw json.RawMessage) (string, error) {
+	var args struct {
+		ProjectID string `json:"project_id"`
+		TaskID    string `json:"task_id"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if err := s.storage.DeleteTask(args.ProjectID, args.TaskID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Task %s deleted.", args.TaskID), nil
+}
+
+func (s *mcpServer) toolAddTaskComment(raw json.RawMessage) (string, error) {
+	var args struct {
+		ProjectID string `json:"project_id"`
+		TaskID    string `json:"task_id"`
+		Comment   string `json:"comment"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+	if err := s.storage.AddTaskComment(args.ProjectID, args.TaskID, args.Comment); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Comment added to task %s.", args.TaskID), nil
+}
+
 // ─── Tool Schema Definitions ──────────────────────────────────────────────────
 
 func (s *mcpServer) toolList() []mcpTool {
@@ -405,6 +535,69 @@ func (s *mcpServer) toolList() []mcpTool {
 				}
 			}`),
 		},
+		{
+			Name:        "add_task",
+			Description: "Add a task to a project.",
+			InputSchema: mustJSON(`{
+				"type": "object",
+				"required": ["project_id", "description"],
+				"properties": {
+					"project_id":  {"type": "string", "description": "Project ID or name"},
+					"description": {"type": "string", "description": "Task description"},
+					"status":      {"type": "string", "enum": ["active", "on_hold", "completed", "archived"], "description": "Initial status (default: active)"}
+				}
+			}`),
+		},
+		{
+			Name:        "list_tasks",
+			Description: "List all tasks for a project.",
+			InputSchema: mustJSON(`{
+				"type": "object",
+				"required": ["project_id"],
+				"properties": {
+					"project_id": {"type": "string", "description": "Project ID or name"}
+				}
+			}`),
+		},
+		{
+			Name:        "update_task",
+			Description: "Update a task's description or status. Status changes are automatically timestamped.",
+			InputSchema: mustJSON(`{
+				"type": "object",
+				"required": ["project_id", "task_id"],
+				"properties": {
+					"project_id":  {"type": "string"},
+					"task_id":     {"type": "string", "description": "Full task ID or first 8 characters"},
+					"description": {"type": "string"},
+					"status":      {"type": "string", "enum": ["active", "on_hold", "completed", "archived"]}
+				}
+			}`),
+		},
+		{
+			Name:        "delete_task",
+			Description: "Delete a task from a project.",
+			InputSchema: mustJSON(`{
+				"type": "object",
+				"required": ["project_id", "task_id"],
+				"properties": {
+					"project_id": {"type": "string"},
+					"task_id":    {"type": "string", "description": "Full task ID or first 8 characters"}
+				}
+			}`),
+		},
+		{
+			Name:        "add_task_comment",
+			Description: "Add a comment to a task.",
+			InputSchema: mustJSON(`{
+				"type": "object",
+				"required": ["project_id", "task_id", "comment"],
+				"properties": {
+					"project_id": {"type": "string"},
+					"task_id":    {"type": "string", "description": "Full task ID or first 8 characters"},
+					"comment":    {"type": "string"}
+				}
+			}`),
+		},
 	}
 }
 
@@ -453,6 +646,7 @@ func buildProject(name, priority string, companyGoal bool, status, directory str
 		CompanyGoal: companyGoal,
 		Status:      st,
 		Notes:       []Note{},
+		Tasks:       []Task{},
 		Directory:   directory,
 		CreatedAt:   t,
 		UpdatedAt:   t,

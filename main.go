@@ -38,6 +38,16 @@ func main() {
 		cmdNotes(args)
 	case "delete-note":
 		cmdDeleteNote(args)
+	case "task-add":
+		cmdTaskAdd(args)
+	case "task-list":
+		cmdTaskList(args)
+	case "task-update":
+		cmdTaskUpdate(args)
+	case "task-comment":
+		cmdTaskComment(args)
+	case "task-delete":
+		cmdTaskDelete(args)
 	case "ui":
 		RunTUI()
 	case "serve":
@@ -235,6 +245,111 @@ func cmdDeleteNote(args []string) {
 	fmt.Printf("Note %s deleted.\n", args[1])
 }
 
+func cmdTaskAdd(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-add <project-id> <description>")
+		os.Exit(1)
+	}
+	storage, err := NewStorage()
+	dieOnErr(err)
+
+	t := now()
+	task := Task{
+		ID:              newID(),
+		Description:     strings.Join(args[1:], " "),
+		Comments:        []string{},
+		Status:          StatusActive,
+		StatusChangedAt: t,
+		CreatedAt:       t,
+	}
+	dieOnErr(storage.AddTask(args[0], task))
+	fmt.Printf("Task added (ID: %s).\n", task.ID[:8])
+}
+
+func cmdTaskList(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-list <project-id>")
+		os.Exit(1)
+	}
+	storage, err := NewStorage()
+	dieOnErr(err)
+
+	p, err := storage.GetProject(args[0])
+	dieOnErr(err)
+
+	if len(p.Tasks) == 0 {
+		fmt.Println("No tasks for this project.")
+		return
+	}
+	fmt.Printf("%-8s  %-40s  %-12s  %s\n", "ID", "DESCRIPTION", "STATUS", "CHANGED")
+	fmt.Println(strings.Repeat("-", 80))
+	for _, t := range p.Tasks {
+		fmt.Printf("%-8s  %-40s  %-12s  %s\n",
+			t.ID[:8], truncate(t.Description, 40), t.Status,
+			t.StatusChangedAt.Format("2006-01-02"))
+	}
+}
+
+func cmdTaskUpdate(args []string) {
+	fs := flag.NewFlagSet("task-update", flag.ExitOnError)
+	status := fs.String("status", "", "New status: active, on_hold, completed, archived")
+	description := fs.String("description", "", "New description")
+	fs.Parse(args)
+
+	remaining := fs.Args()
+	if len(remaining) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-update <project-id> <task-id> [--status ...] [--description ...]")
+		os.Exit(1)
+	}
+	storage, err := NewStorage()
+	dieOnErr(err)
+
+	p, err := storage.GetProject(remaining[0])
+	dieOnErr(err)
+
+	taskID := remaining[1]
+	for _, t := range p.Tasks {
+		if t.ID == taskID || (len(t.ID) >= 8 && t.ID[:8] == taskID) {
+			if *description != "" {
+				t.Description = *description
+			}
+			if *status != "" {
+				t.Status = Status(*status)
+			}
+			dieOnErr(storage.UpdateTask(p.ID, t))
+			fmt.Printf("Task %s updated.\n", t.ID[:8])
+			return
+		}
+	}
+	fmt.Fprintf(os.Stderr, "Task %q not found.\n", taskID)
+	os.Exit(1)
+}
+
+func cmdTaskComment(args []string) {
+	if len(args) < 3 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-comment <project-id> <task-id> <comment text>")
+		os.Exit(1)
+	}
+	storage, err := NewStorage()
+	dieOnErr(err)
+
+	comment := strings.Join(args[2:], " ")
+	dieOnErr(storage.AddTaskComment(args[0], args[1], comment))
+	fmt.Println("Comment added.")
+}
+
+func cmdTaskDelete(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-delete <project-id> <task-id>")
+		os.Exit(1)
+	}
+	storage, err := NewStorage()
+	dieOnErr(err)
+
+	dieOnErr(storage.DeleteTask(args[0], args[1]))
+	fmt.Printf("Task %s deleted.\n", args[1])
+}
+
 func cmdServe() {
 	storage, err := NewStorage()
 	dieOnErr(err)
@@ -288,6 +403,11 @@ COMMANDS:
   note          Add a note to a project
   notes         List notes for a project
   delete-note   Delete a note from a project
+  task-add      Add a task to a project
+  task-list     List tasks for a project
+  task-update   Update a task's status or description
+  task-comment  Add a comment to a task
+  task-delete   Delete a task from a project
   ui            Launch interactive menu interface
   serve         Start MCP server (for use with Claude)
   version       Show version

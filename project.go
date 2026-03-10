@@ -42,6 +42,15 @@ type Note struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Task struct {
+	ID              string    `json:"id"`
+	Description     string    `json:"description"`
+	Comments        []string  `json:"comments"`
+	Status          Status    `json:"status"`
+	StatusChangedAt time.Time `json:"status_changed_at"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
 type Project struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -49,6 +58,7 @@ type Project struct {
 	CompanyGoal bool      `json:"company_goal"`
 	Status      Status    `json:"status"`
 	Notes       []Note    `json:"notes"`
+	Tasks       []Task    `json:"tasks"`
 	Directory   string    `json:"directory"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -75,6 +85,15 @@ func (p *Project) String() string {
 				n.ID[:8],
 				n.CreatedAt.Format("2006-01-02"),
 				n.Content)
+		}
+	}
+	if len(p.Tasks) > 0 {
+		fmt.Fprintf(&sb, "Tasks (%d):\n", len(p.Tasks))
+		for _, t := range p.Tasks {
+			fmt.Fprintf(&sb, "  [%s] %-12s %s\n", t.ID[:8], t.Status, t.Description)
+			for _, c := range t.Comments {
+				fmt.Fprintf(&sb, "    Comment: %s\n", c)
+			}
 		}
 	}
 	return sb.String()
