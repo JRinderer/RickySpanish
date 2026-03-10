@@ -1,5 +1,10 @@
-# Compiled binary
+# Compiled binaries
 rickspanish
+rickspanish-darwin-amd64
+rickspanish-darwin-arm64
+rickspanish-linux-amd64
+rickspanish-linux-arm64
+rickspanish-windows-amd64.exe
 
 # IDE
 .idea/
