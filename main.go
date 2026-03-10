@@ -14,8 +14,8 @@ const version = "1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+		RunTUI()
+		return
 	}
 
 	cmd := os.Args[1]
@@ -38,6 +38,8 @@ func main() {
 		cmdNotes(args)
 	case "delete-note":
 		cmdDeleteNote(args)
+	case "ui":
+		RunTUI()
 	case "serve":
 		cmdServe()
 	case "version":
@@ -286,6 +288,7 @@ COMMANDS:
   note          Add a note to a project
   notes         List notes for a project
   delete-note   Delete a note from a project
+  ui            Launch interactive menu interface
   serve         Start MCP server (for use with Claude)
   version       Show version
 
