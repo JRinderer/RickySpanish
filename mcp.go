@@ -335,9 +335,9 @@ func (s *mcpServer) toolAddTask(raw json.RawMessage) (string, error) {
 	if args.Description == "" {
 		return "", fmt.Errorf("description is required")
 	}
-	st := Status(args.Status)
+	st := TaskStatus(args.Status)
 	if args.Status == "" {
-		st = StatusActive
+		st = TaskStatusActive
 	} else if !st.Valid() {
 		return "", fmt.Errorf("invalid status %q", args.Status)
 	}
@@ -403,7 +403,7 @@ func (s *mcpServer) toolUpdateTask(raw json.RawMessage) (string, error) {
 				t.Description = *args.Description
 			}
 			if args.Status != nil {
-				t.Status = Status(*args.Status)
+				t.Status = TaskStatus(*args.Status)
 			}
 			if err := s.storage.UpdateTask(p.ID, t); err != nil {
 				return "", err
@@ -544,7 +544,7 @@ func (s *mcpServer) toolList() []mcpTool {
 				"properties": {
 					"project_id":  {"type": "string", "description": "Project ID or name"},
 					"description": {"type": "string", "description": "Task description"},
-					"status":      {"type": "string", "enum": ["active", "on_hold", "completed", "archived"], "description": "Initial status (default: active)"}
+					"status":      {"type": "string", "enum": ["active", "canceled", "on_hold", "completed", "other"], "description": "Initial status (default: active)"}
 				}
 			}`),
 		},
@@ -569,7 +569,7 @@ func (s *mcpServer) toolList() []mcpTool {
 					"project_id":  {"type": "string"},
 					"task_id":     {"type": "string", "description": "Full task ID or first 8 characters"},
 					"description": {"type": "string"},
-					"status":      {"type": "string", "enum": ["active", "on_hold", "completed", "archived"]}
+					"status":      {"type": "string", "enum": ["active", "canceled", "on_hold", "completed", "other"]}
 				}
 			}`),
 		},

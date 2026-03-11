@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "1.0.2"
+const version = "1.0.3"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -246,23 +246,34 @@ func cmdDeleteNote(args []string) {
 }
 
 func cmdTaskAdd(args []string) {
-	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-add <project-id> <description>")
+	fs := flag.NewFlagSet("task-add", flag.ExitOnError)
+	statusFlag := fs.String("status", "active", "Initial status: active, canceled, on_hold, completed, other")
+	fs.Parse(args)
+
+	remaining := fs.Args()
+	if len(remaining) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: rickspanish task-add <project-id> <description> [--status ...]")
 		os.Exit(1)
 	}
 	storage, err := NewStorage()
 	dieOnErr(err)
 
+	taskStatus := TaskStatus(*statusFlag)
+	if !taskStatus.Valid() {
+		fmt.Fprintf(os.Stderr, "Invalid status %q. Valid values: active, canceled, on_hold, completed, other\n", *statusFlag)
+		os.Exit(1)
+	}
+
 	t := now()
 	task := Task{
 		ID:              newID(),
-		Description:     strings.Join(args[1:], " "),
+		Description:     strings.Join(remaining[1:], " "),
 		Comments:        []string{},
-		Status:          StatusActive,
+		Status:          taskStatus,
 		StatusChangedAt: t,
 		CreatedAt:       t,
 	}
-	dieOnErr(storage.AddTask(args[0], task))
+	dieOnErr(storage.AddTask(remaining[0], task))
 	fmt.Printf("Task added (ID: %s).\n", task.ID[:8])
 }
 
@@ -292,7 +303,7 @@ func cmdTaskList(args []string) {
 
 func cmdTaskUpdate(args []string) {
 	fs := flag.NewFlagSet("task-update", flag.ExitOnError)
-	status := fs.String("status", "", "New status: active, on_hold, completed, archived")
+	status := fs.String("status", "", "New status: active, canceled, on_hold, completed, other")
 	description := fs.String("description", "", "New description")
 	fs.Parse(args)
 
@@ -314,7 +325,7 @@ func cmdTaskUpdate(args []string) {
 				t.Description = *description
 			}
 			if *status != "" {
-				t.Status = Status(*status)
+				t.Status = TaskStatus(*status)
 			}
 			dieOnErr(storage.UpdateTask(p.ID, t))
 			fmt.Printf("Task %s updated.\n", t.ID[:8])

@@ -8,18 +8,17 @@ import (
 	"time"
 )
 
-const tuiW = 72
-
 var tuiIn = bufio.NewReader(os.Stdin)
 
 // ─── Box helpers ──────────────────────────────────────────────────────────────
 
-func tuiTop() string { return "╔" + strings.Repeat("═", tuiW-2) + "╗" }
-func tuiBot() string { return "╚" + strings.Repeat("═", tuiW-2) + "╝" }
-func tuiDiv() string { return "╠" + strings.Repeat("═", tuiW-2) + "╣" }
+func tuiTop() string { w := tuiWidth(); return "╔" + strings.Repeat("═", w-2) + "╗" }
+func tuiBot() string { w := tuiWidth(); return "╚" + strings.Repeat("═", w-2) + "╝" }
+func tuiDiv() string { w := tuiWidth(); return "╠" + strings.Repeat("═", w-2) + "╣" }
 
 func tuiRow(s string) string {
-	inner := tuiW - 4
+	w := tuiWidth()
+	inner := w - 4
 	runes := []rune(s)
 	if len(runes) > inner {
 		s = string(runes[:inner-3]) + "..."
@@ -210,7 +209,7 @@ func showProjectDetail(storage *Storage, projectID string) {
 		}
 
 		fmt.Println(tuiDiv())
-		fmt.Println(tuiRow("  [N] Add Note   [R] Remove Note   [T] Manage Tasks"))
+		fmt.Println(tuiRow("  [N] Add Note   [E] Edit Note   [R] Remove Note   [T] Manage Tasks"))
 		fmt.Println(tuiDiv())
 		fmt.Println(tuiRow("  [S] Save   [C] Cancel   [D] Delete Project"))
 		fmt.Println(tuiBot())
@@ -237,6 +236,16 @@ func showProjectDetail(storage *Storage, projectID string) {
 					Content:   content,
 					CreatedAt: time.Now().UTC(),
 				})
+			}
+		case "E":
+			if len(edited.Notes) == 0 {
+				break
+			}
+			fmt.Print("  Edit note #: ")
+			var noteIdx int
+			fmt.Sscanf(tuiRead(), "%d", &noteIdx)
+			if noteIdx >= 1 && noteIdx <= len(edited.Notes) {
+				showNoteDetail(&edited.Notes[noteIdx-1])
 			}
 		case "R":
 			if len(edited.Notes) == 0 {
@@ -374,6 +383,35 @@ func tuiPickStatus(current Status) Status {
 	return current
 }
 
+func tuiPickTaskStatus(current TaskStatus) TaskStatus {
+	clearScreen()
+	fmt.Println(tuiTop())
+	fmt.Println(tuiRow(fmt.Sprintf("  Select Task Status  (current: %s)", current)))
+	fmt.Println(tuiDiv())
+	fmt.Println(tuiRow("  [1]  Active"))
+	fmt.Println(tuiRow("  [2]  Canceled"))
+	fmt.Println(tuiRow("  [3]  On Hold"))
+	fmt.Println(tuiRow("  [4]  Completed"))
+	fmt.Println(tuiRow("  [5]  Other"))
+	fmt.Println(tuiDiv())
+	fmt.Println(tuiRow("  [0]  Keep current"))
+	fmt.Println(tuiBot())
+	fmt.Print("  Choice: ")
+	switch tuiRead() {
+	case "1":
+		return TaskStatusActive
+	case "2":
+		return TaskStatusCanceled
+	case "3":
+		return TaskStatusOnHold
+	case "4":
+		return TaskStatusCompleted
+	case "5":
+		return TaskStatusOther
+	}
+	return current
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 func tuiError(msg string) {
@@ -434,7 +472,7 @@ func showTaskList(p *Project) {
 				ID:              newID(),
 				Description:     desc,
 				Comments:        []string{},
-				Status:          StatusActive,
+				Status:          TaskStatusActive,
 				StatusChangedAt: t,
 				CreatedAt:       t,
 			})
@@ -489,7 +527,7 @@ func showTaskDetail(p *Project, taskIdx int) {
 				t.Description = desc
 			}
 		case "2":
-			newStatus := tuiPickStatus(t.Status)
+			newStatus := tuiPickTaskStatus(t.Status)
 			if newStatus != t.Status {
 				t.Status = newStatus
 				t.StatusChangedAt = time.Now().UTC()
@@ -523,6 +561,65 @@ func showTaskDetail(p *Project, taskIdx int) {
 			}
 			return
 		case "0":
+			return
+		}
+	}
+}
+
+// ─── Note detail / edit ───────────────────────────────────────────────────────
+
+func showNoteDetail(n *Note) {
+	for {
+		clearScreen()
+		w := tuiWidth()
+		inner := w - 6 // "║ " + "  " content indent + " ║"
+
+		fmt.Println(tuiTop())
+		fmt.Println(tuiRow(fmt.Sprintf("  NOTE  [%s]  %s", n.ID[:8], n.CreatedAt.Format("2006-01-02 15:04:05"))))
+		fmt.Println(tuiDiv())
+
+		// Word-wrap content into inner-width lines
+		words := strings.Fields(n.Content)
+		if len(words) == 0 {
+			fmt.Println(tuiRow("  (empty)"))
+		} else {
+			line := ""
+			for _, word := range words {
+				if line == "" {
+					line = word
+				} else if len(line)+1+len(word) <= inner {
+					line += " " + word
+				} else {
+					fmt.Println(tuiRow("  " + line))
+					line = word
+				}
+			}
+			if line != "" {
+				fmt.Println(tuiRow("  " + line))
+			}
+		}
+
+		fmt.Println(tuiDiv())
+		fmt.Println(tuiRow("  [E] Edit content   [0] Back"))
+		fmt.Println(tuiBot())
+		fmt.Print("  Choice: ")
+
+		switch strings.ToUpper(tuiRead()) {
+		case "E":
+			clearScreen()
+			fmt.Println(tuiTop())
+			fmt.Println(tuiRow("  Edit Note"))
+			fmt.Println(tuiDiv())
+			fmt.Println(tuiRow("  Current content:"))
+			fmt.Println(tuiRow("  " + truncate(n.Content, w-6)))
+			fmt.Println(tuiDiv())
+			fmt.Println(tuiRow("  Enter new content (blank = keep current):"))
+			fmt.Println(tuiBot())
+			fmt.Print("  > ")
+			if text := tuiRead(); text != "" {
+				n.Content = text
+			}
+		case "0", "":
 			return
 		}
 	}

@@ -8,6 +8,7 @@ import (
 
 type Priority string
 type Status string
+type TaskStatus string
 
 const (
 	PriorityLow    Priority = "low"
@@ -18,6 +19,12 @@ const (
 	StatusOnHold    Status = "on_hold"
 	StatusCompleted Status = "completed"
 	StatusArchived  Status = "archived"
+
+	TaskStatusActive    TaskStatus = "active"
+	TaskStatusCanceled  TaskStatus = "canceled"
+	TaskStatusOnHold    TaskStatus = "on_hold"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusOther     TaskStatus = "other"
 )
 
 func (p Priority) Valid() bool {
@@ -36,6 +43,14 @@ func (s Status) Valid() bool {
 	return false
 }
 
+func (ts TaskStatus) Valid() bool {
+	switch ts {
+	case TaskStatusActive, TaskStatusCanceled, TaskStatusOnHold, TaskStatusCompleted, TaskStatusOther:
+		return true
+	}
+	return false
+}
+
 type Note struct {
 	ID        string    `json:"id"`
 	Content   string    `json:"content"`
@@ -43,12 +58,12 @@ type Note struct {
 }
 
 type Task struct {
-	ID              string    `json:"id"`
-	Description     string    `json:"description"`
-	Comments        []string  `json:"comments"`
-	Status          Status    `json:"status"`
-	StatusChangedAt time.Time `json:"status_changed_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID              string     `json:"id"`
+	Description     string     `json:"description"`
+	Comments        []string   `json:"comments"`
+	Status          TaskStatus `json:"status"`
+	StatusChangedAt time.Time  `json:"status_changed_at"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 type Project struct {
